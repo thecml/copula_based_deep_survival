@@ -11,8 +11,23 @@ from evaluation import surv_diff,C_index, IBS_plain
 from tqdm import tqdm
 from sklearn.metrics import r2_score
 from scipy.stats import kendalltau
+from preprocessor import Preprocessor
+from typing import Tuple
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+def preprocess_data(X_train, X_valid, X_test, cat_features,
+                    num_features, as_array=False) \
+    -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    preprocessor = Preprocessor(cat_feat_strat='mode', num_feat_strat='mean')
+    transformer = preprocessor.fit(X_train, cat_feats=cat_features, num_feats=num_features,
+                                   one_hot=True, fill_value=-1)
+    X_train = transformer.transform(X_train)
+    X_valid = transformer.transform(X_valid)
+    X_test = transformer.transform(X_test)
+    if as_array:
+        return (np.array(X_train), np.array(X_valid), np.array(X_test))
+    return (X_train, X_valid, X_test)
 
 def LOG(x):
     return torch.log(x+1e-20*(x<1e-20))
@@ -98,10 +113,10 @@ def dependent_train_loop(model1, model2,train_data, val_data, copula, n_itr, opt
             with torch.no_grad():
                 copula.theta[:] = torch.clamp(copula.theta,0.001,30)
         
-        #train_loss_log.append(loss.detach().clone())
-        #copula_log[itr] = copula.theta.detach().clone()
-        #if itr % 1000 == 0:
-        #    print(min_val_loss)
+        train_loss_log.append(loss.detach().clone())
+        copula_log[itr] = copula.theta.detach().clone()
+        if itr % 1000 == 0:
+            print(min_val_loss)
 
     ##########################
         with torch.no_grad():

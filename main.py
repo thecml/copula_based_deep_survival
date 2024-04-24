@@ -6,34 +6,62 @@ from utils import *
 from evaluation import *
 import argparse
 import pickle
+from data_loader import RotterdamDataLoader
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+COPULA = "cl"
+THETA = 0.1
+
+torch.manual_seed(0)
+np.random.seed(0)
+
+def make_data_dict(data):
+    data_dict = dict()
+    data_dict['X'] = torch.tensor(data[0], dtype=torch.float)
+    data_dict['T'] = torch.tensor(data[1][:,0], dtype=torch.float)
+    data_dict['t1'] = torch.tensor(data[1][:,0], dtype=torch.float)
+    data_dict['t2'] = torch.tensor(data[1][:,0], dtype=torch.float)
+    data_dict['E'] = torch.tensor(data[2][:,0], dtype=torch.float)
+    return data_dict
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--nf', type=int, required=True)
-    parser.add_argument('--copula', type=str, choices=['cl', 'fr'], required=True)
-    parser.add_argument('--theta', type=float, required=True)
-    parser.add_argument('--tau', type=int, required=True)
-    args = parser.parse_args()
-    torch.manual_seed(0)
-    np.random.seed(0)
-    nf = args.nf
-    n_train = 2000
-    n_val = 1000
-    n_test = 1000
-    x_dict = synthetic_x(n_train, n_val, n_test, nf, DEVICE)
+    # Load data
+    dl = RotterdamDataLoader().load_data()
+    num_features, cat_features = dl.get_features()
+    train_data, valid_data, test_data = dl.split_data(train_size=0.7, valid_size=0.5)
+    n_events = 2
+
+    train_data[0], valid_data[0], test_data[0] = preprocess_data(train_data[0], valid_data[0], test_data[0],
+                                                                 cat_features, num_features,
+                                                                 as_array=True)
+
+    train_dict = make_data_dict(train_data)
+    val_dict = make_data_dict(valid_data)
+    test_dict = make_data_dict(test_data)
+
+    #parser = argparse.ArgumentParser()
+    #parser.add_argument('--nf', type=int, required=True)
+    #parser.add_argument('--copula', type=str, choices=['cl', 'fr'], required=True)
+    #parser.add_argument('--theta', type=float, required=True)
+    #parser.add_argument('--tau', type=int, required=True)
+    #args = parser.parse_args()
+    #nf = args.nf
+    #n_train = 2000
+    #n_val = 1000
+    #n_test = 1000
+    #x_dict = synthetic_x(n_train, n_val, n_test, nf, DEVICE)
+    
+    nf = train_dict['X'].shape[1]
     dgp1 = Weibull_linear(nf, 14, 4,DEVICE)
     dgp2 = Weibull_linear(nf, 16, 3,DEVICE)
     dgp1.coeff = torch.rand((nf,),device=DEVICE)
     dgp2.coeff = torch.rand((nf,), device=DEVICE)
 
-    if args.copula == 'cl':
-        copula_dgp = Clayton(torch.tensor([args.theta], device=DEVICE).type(torch.float32), device=DEVICE)
+    if COPULA == 'cl':
+        copula_dgp = Clayton(torch.tensor([THETA], device=DEVICE).type(torch.float32), device=DEVICE)
     else:
-        copula_dgp = Frank(torch.tensor([args.theta], device=DEVICE).type(torch.float32), device=DEVICE)
-    train_dict, val_dict, test_dict = \
-                generate_data(x_dict, dgp1, dgp2,DEVICE, copula_dgp)
+        copula_dgp = Frank(torch.tensor([THETA], device=DEVICE).type(torch.float32), device=DEVICE)
+    #train_dict, val_dict, test_dict = generate_data(x_dict, dgp1, dgp2,DEVICE, copula_dgp)
     
     km_h1, km_p1 = KM(train_dict['T'], 1.0-train_dict['E'])
     km_h2, km_p2 = KM(train_dict['T'], train_dict['E'])
@@ -44,7 +72,7 @@ if __name__ == '__main__':
                         'c_r1':[], 'c_r2':[], 'theta':[]}
     for i in range(1): # 10
         
-        if args.copula == 'cl':
+        if COPULA == 'cl':
             copula = Clayton(torch.tensor([4.0], device=DEVICE).type(torch.float32), device=DEVICE)
         else:
             copula = Frank(torch.tensor([18.0], device=DEVICE).type(torch.float32), device=DEVICE)
